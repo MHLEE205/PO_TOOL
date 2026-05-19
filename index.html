@@ -258,6 +258,15 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 </head>
 <body>
 
+<div id="loginGate" style="display:flex;position:fixed;inset:0;background:#0f1117;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+  <div style="font-size:40px;font-weight:800;letter-spacing:3px;color:#e2e8f0;">LEEN<span style="color:#4f8ef7">AI</span></div>
+  <div style="font-size:13px;color:#8892a4;font-weight:500;">B-03 統合ツール</div>
+  <div style="width:48px;height:1px;background:#2e3350;margin:12px 0;"></div>
+  <div style="font-size:12px;color:#4a5568;text-align:center;line-height:1.8;">このツールを使用するには<br>Outlookアカウントでのログインが必要です</div>
+  <button id="gateLoginBtn" onclick="gateLogin()" style="margin-top:8px;background:#4f8ef7;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Segoe UI',sans-serif;display:inline-flex;align-items:center;gap:8px;">🔑 Outlookでログイン</button>
+  <div id="gateStatus" style="font-size:11px;color:#8892a4;height:18px;"></div>
+</div>
+
 <!-- Loading Overlay -->
 <div class="loading-overlay" id="loadingOverlay">
   <div class="loading-box">
@@ -873,6 +882,18 @@ function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).
 async function sha256(str) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); }
 function randomStr(len=64) { const a=new Uint8Array(len); crypto.getRandomValues(a); return b64url(a).slice(0,len); }
 
+async function gateLogin() {
+  const btn = document.getElementById('gateLoginBtn');
+  btn.disabled = true;
+  document.getElementById('gateStatus').textContent = 'ログイン中...';
+  try {
+    await startLogin();
+  } catch(e) {
+    btn.disabled = false;
+    document.getElementById('gateStatus').textContent = e.message !== 'CANCELLED' ? 'エラー: ' + e.message : '';
+  }
+}
+
 async function startLogin() {
   const verifier = randomStr(64);
   const challenge = b64url(await sha256(verifier));
@@ -913,6 +934,7 @@ async function handleCallback() {
     // ② id_token JWT デコード → ユーザー情報確実取得（Graph APIより信頼性高い）
     document.getElementById('dvLoginCard').classList.add('hidden');
     document.getElementById('headerUser').style.display = 'flex';
+    const gate = document.getElementById('loginGate'); if (gate) gate.style.display = 'none';
     updateScLoginStatus();
 
     if (data.id_token) {
