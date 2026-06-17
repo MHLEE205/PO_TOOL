@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.34</title>
+<title>LEENAI B-03 統合ツール v2.35</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -280,7 +280,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.34 (2026-06-17)</div>
+    <div class="header-ver">v2.35 (2026-06-17)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -1829,56 +1829,47 @@ function printDoc(html, mailTo='', mailCc='', mailSubject='', mailBody='', docNa
   // ファイル名 (BKG_業者名_書類種別) — ブラウザ印刷時のPDF保存名になる
   const safeFileName = (fileName || docName).replace(/[\/\\?%*:|"<>]/g, '_');
 
-  // メールボタン: Graph API 優先 → mailto フォールバック
+  // メールボタン: mailto ベース (v2.33互換) + Graph API script を別途注入
   const ccFull = ['rcp@leenearcorp.com', ...(mailCc ? [mailCc] : [])].filter((v,i,a)=>a.indexOf(v)===i).join(';');
+  const mailtoUrl = mailTo
+    ? 'mailto:' + encodeURIComponent(mailTo)
+      + '?cc=' + encodeURIComponent(ccFull)
+      + '&subject=' + encodeURIComponent(mailSubject || '')
+      + '&body=' + encodeURIComponent((mailBody || '').slice(0, 1800))
+    : '';
+  const mailBtnHtml = mailtoUrl
+    ? `<button class="btn-mail" id="btnMailGraph" onclick="sendMailGraph()" data-url="${mailtoUrl.replace(/"/g,'&quot;')}" title="Graph API (添付付き) / フォールバック: mailto">📧 メール作成</button>`
+    : '';
 
-  let mailBtnHtml = '';
-  if (mailTo) {
-    // Graph API トークンが有効な場合 → Graph API で添付ファイル付きドラフト作成
-    // 子ウィンドウから親ウィンドウの createOutlookDraft を呼び出す
-    const mailDataJson = JSON.stringify({
-      to: mailTo,
-      cc: ccFull,
-      subject: mailSubject || '',
-      body: mailBody || '',
-      docName: docName,
-      safeFileName: safeFileName
-    }).replace(/\\/g,'\\\\').replace(/`/g,'\\`');
-
-    mailBtnHtml = `
-<button class="btn-mail btn-mail-graph" id="btnMailGraph"
-  onclick="(async()=>{
-    const btn=document.getElementById('btnMailGraph');
-    const op=window.opener;
-    if(op && op.S && op.S.graphToken && Date.now()<op.S.graphTokenExpiry){
-      btn.disabled=true; btn.textContent='⏳ 送信中...';
-      try{
-        const d=JSON.parse(\`${mailDataJson}\`);
-        await op.createOutlookDraft(d.to,d.cc,d.subject,d.body,document.getElementById('doc-body-content').innerHTML,d.docName);
-        btn.textContent='✅ Outlookで開きました';
-      }catch(e){
-        btn.disabled=false; btn.textContent='📧 メール作成';
-        alert('Graph APIエラー:\\n'+e.message);
-      }
-    } else {
-      // フォールバック: mailto
-      const ccM=\`${ccFull.replace(/`/g,'\\`')}\`;
-      const url='mailto:'+encodeURIComponent(\`${mailTo.replace(/`/g,'\\`')}\`)
-        +'?cc='+encodeURIComponent(ccM)
-        +'&subject='+encodeURIComponent(\`${(mailSubject||'').replace(/`/g,'\\`')}\`)
-        +'&body='+encodeURIComponent(\`${(mailBody||'').slice(0,1800).replace(/`/g,'\\`')}\`);
-      window.location.href=url;
-    }
-  })()" title="Graph API (添付付き) / フォールバック: mailto">📧 メール作成</button>`;
-  }
+  // Graph API 呼び出しスクリプト — データはJSON.stringifyで安全に注入、htmlには触れない
+  const graphScript = mailTo ? (
+    '<script>' +
+    'var _md={' +
+      'to:'  + JSON.stringify(mailTo) + ',' +
+      'cc:'  + JSON.stringify(ccFull) + ',' +
+      'sub:' + JSON.stringify(mailSubject || '') + ',' +
+      'dn:'  + JSON.stringify(docName) +
+    '};' +
+    'async function sendMailGraph(){' +
+      'var btn=document.getElementById("btnMailGraph");' +
+      'var op=window.opener;' +
+      'if(op&&op.S&&op.S.graphToken&&Date.now()<op.S.graphTokenExpiry){' +
+        'btn.disabled=true;btn.textContent="⏳ 送信中...";' +
+        'try{' +
+          'await op.createOutlookDraft(_md.to,_md.cc,_md.sub,"",document.getElementById("doc-body-content").innerHTML,_md.dn);' +
+          'btn.textContent="✅ Outlookで開きました";' +
+        '}catch(e){btn.disabled=false;btn.textContent="📧 メール作成";alert("Graph APIエラー:\\n"+e.message);}' +
+      '}else{window.location.href=btn.dataset.url;}' +
+    '}' +
+    '<\/script>'
+  ) : '';
 
   w.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">' +
     '<title>' + safeFileName + '</title>' +
     PRINT_CSS +
-    `<style>
-      .btn-mail{background:#059669;color:#fff;}
-      .btn-mail:disabled{background:#374151;color:#9ca3af;cursor:not-allowed;}
-    </style></head><body>` +
+    '<style>.btn-mail{background:#059669;color:#fff;}.btn-mail:disabled{background:#374151;color:#9ca3af;cursor:not-allowed;}<\/style>' +
+    '</head><body>' +
+    graphScript +
     '<div class="print-toolbar">' +
       '<button class="btn-print" onclick="window.print()">🖨️ 印刷 / PDF保存</button>' +
       mailBtnHtml +
