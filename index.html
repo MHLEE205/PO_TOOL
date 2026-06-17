@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.35</title>
+<title>LEENAI B-03 統合ツール v2.36</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -261,6 +261,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 <div id="loginGate" style="display:flex;position:fixed;inset:0;background:#0f1117;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
   <div style="font-size:40px;font-weight:800;letter-spacing:3px;color:#e2e8f0;">LEEN<span style="color:#4f8ef7">AI</span></div>
   <div style="font-size:13px;color:#8892a4;font-weight:500;">B-03 統合ツール</div>
+  <div style="font-size:11px;color:#4f8ef7;font-weight:700;background:rgba(79,142,247,.12);padding:2px 12px;border-radius:20px;letter-spacing:1px;">v2.36</div>
   <div style="width:48px;height:1px;background:#2e3350;margin:12px 0;"></div>
   <div style="font-size:12px;color:#4a5568;text-align:center;line-height:1.8;">このツールを使用するには<br>Outlookアカウントでのログインが必要です</div>
   <button id="gateLoginBtn" onclick="gateLogin()" style="margin-top:8px;background:#4f8ef7;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Segoe UI',sans-serif;display:inline-flex;align-items:center;gap:8px;">🔑 Outlookでログイン</button>
@@ -280,7 +281,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.35 (2026-06-17)</div>
+    <div class="header-ver">v2.36 (2026-06-17)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -631,6 +632,7 @@ const S = {
   mailtoUrlB: '',
   mailBodyB: '',
 };
+window._S = S; // 자식ウィンドウから window.opener._S でアクセス可能にする
 
 const DEFAULT_STAFF = [
   {code:'MH_LEE',ja:'李 明鎬',en:'Lee Myoung ho',email:'mh_lee@leenearcorp.com',tel:'+81-3-3528-9850',fax:'+81-3-3528-9851'},
@@ -1853,7 +1855,8 @@ function printDoc(html, mailTo='', mailCc='', mailSubject='', mailBody='', docNa
     'async function sendMailGraph(){' +
       'var btn=document.getElementById("btnMailGraph");' +
       'var op=window.opener;' +
-      'if(op&&op.S&&op.S.graphToken&&Date.now()<op.S.graphTokenExpiry){' +
+      'var st=op&&(op._S||op.S);' +
+      'if(st&&st.graphToken&&Date.now()<st.graphTokenExpiry){' +
         'btn.disabled=true;btn.textContent="⏳ 送信中...";' +
         'try{' +
           'await op.createOutlookDraft(_md.to,_md.cc,_md.sub,"",document.getElementById("doc-body-content").innerHTML,_md.dn);' +
