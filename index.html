@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.38</title>
+<title>LEENAI B-03 統合ツール v2.39</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -280,7 +280,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.38 (2026-07-08)</div>
+    <div class="header-ver">v2.39 (2026-07-09)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -1971,7 +1971,7 @@ function makeHaishaMailBody(grp) {
   const totalCt = Object.values(grp.plants).flatMap(p=>p.cts).length;
   const region   = (bkg?._region || '').toUpperCase();
   const radiation = region === 'KOREA' ? '必要' : '不要';
-  const maxLoad   = region === 'KOREA' ? '正味 23MT 以下' : '正味 25MT 以下';
+  const maxLoad   = region === 'KOREA' ? '正味 23MT 未満' : '正味 25MT 未満';
   const bkgNo = bkg?.cr49f_booking_no || '';
   const shipName = bkg?.cr49f_main_ship_name || '';
   const sep = '--------------------------------';
@@ -2022,7 +2022,7 @@ function makeOkurijouMailBody(packerName, pkGrp) {
   const mcy = (S.mcyMap||{})[pol]?.[carrier] || bkg?.crcf9_delivery_location || '';
   const region   = (bkg?._region || '').toUpperCase();
   const radiation = region === 'KOREA' ? '必要' : '不要';
-  const maxLoad   = region === 'KOREA' ? '正味 23MT 以下' : '正味 25MT 以下';
+  const maxLoad   = region === 'KOREA' ? '正味 23MT 未満' : '正味 25MT 未満';
   const bkgNo = bkg?.cr49f_booking_no || '';
   const shipName = bkg?.cr49f_main_ship_name || '';
   const etd = bkg?.cr49f_etd ? fmtDate(bkg.cr49f_etd) : '';
@@ -2057,7 +2057,7 @@ function makeOkurijouMailBody(packerName, pkGrp) {
     sep, infoRows, sep,
     '',
     `放射線測定検査：${radiation}`,
-    'パン詰め写真　：必要',
+    'バン詰め写真　：必要',
     `積込み重量　　：${maxLoad}`,
     '',
     '作業後は搬入票と写真を下記宛にご送付お願いいたします。',
@@ -2105,7 +2105,7 @@ function makeBkgNoticeMailBody(packerName, pkGrp) {
   // 放射線測定検査 (韓国向けのみ必要)
   const radiation = region === 'KOREA' ? '必要' : '不要';
   // 積込み重量 (韓国向けのみ 23MT以下、それ以外は 25MT以下)
-  const maxLoad = region === 'KOREA' ? '正味 23MT 以下' : '正味 25MT 以下';
+  const maxLoad = region === 'KOREA' ? '正味 23MT 未満' : '正味 25MT 未満';
   // BKG情報 列揃え
   function pw(s) { let w=0; for(const c of s) w+=c.codePointAt(0)>127?2:1; return w; }
   function pad(s, n) { const sp=n-pw(s); return s+' '.repeat(Math.max(0,sp)); }
@@ -2138,7 +2138,7 @@ function makeBkgNoticeMailBody(packerName, pkGrp) {
     fwdName ? `乙仲：${fwdName}` : '',
     '',
     `放射線測定検査：${radiation}`,
-    'パン詰め写真　：必要',
+    'バン詰め写真　：必要',
     `積込み重量　　：${maxLoad}`,
     '',
     'ご確認いただけますよう、お願いいたします。',
