@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.40</title>
+<title>LEENAI B-03 統合ツール v2.41</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -280,7 +280,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.40 (2026-10-01)</div>
+    <div class="header-ver">v2.41 (2026-10-01)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -766,8 +766,20 @@ async function loadExcelFromSharePoint() {
   banner.innerHTML = '<span class="spinner" style="font-size:20px;"></span><div class="folder-path">SharePoint から読み込み中...</div>';
 
   try {
+    /* Drive ID を先に取得 (sites/{host}:{path}:/drive/root: は Graph APIで動作しないため) */
+    const driveRes = await fetch(
+      'https://graph.microsoft.com/v1.0/sites/leenear.sharepoint.com:/sites/leenearsite1/drive',
+      { headers: { 'Authorization': `Bearer ${S.graphToken}` } }
+    );
+    if (!driveRes.ok) {
+      const errText = await driveRes.text().catch(() => driveRes.statusText);
+      throw new Error(`Drive取得失敗 HTTP ${driveRes.status}: ${errText}`);
+    }
+    const driveData = await driveRes.json();
+    const driveId = driveData.id;
+
     const path = SP_EXCEL_SEGMENTS.map(s => encodeURIComponent(s)).join('/');
-    const url  = `https://graph.microsoft.com/v1.0/sites/leenear.sharepoint.com:/sites/leenearsite1:/drive/root:/${path}:/content`;
+    const url  = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${path}:/content`;
     const res  = await fetch(url, { headers: { 'Authorization': `Bearer ${S.graphToken}` } });
     if (!res.ok) {
       const errText = await res.text().catch(() => res.statusText);
