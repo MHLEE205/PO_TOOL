@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.43</title>
+<title>LEENAI B-03 統合ツール v2.44</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -261,7 +261,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 <div id="loginGate" style="display:flex;position:fixed;inset:0;background:#0f1117;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
   <div style="font-size:40px;font-weight:800;letter-spacing:3px;color:#e2e8f0;">LEEN<span style="color:#4f8ef7">AI</span></div>
   <div style="font-size:11px;color:#fff;background:#4f8ef7;padding:2px 10px;border-radius:12px;font-weight:700;letter-spacing:1px;">SYS-B-03</div>
-  <div style="font-size:13px;color:#8892a4;font-weight:500;">B-03 統合ツール v2.43</div>
+  <div style="font-size:13px;color:#8892a4;font-weight:500;">B-03 統合ツール v2.44</div>
   <div style="width:48px;height:1px;background:#2e3350;margin:12px 0;"></div>
   <div style="font-size:12px;color:#4a5568;text-align:center;line-height:1.8;">このツールを使用するには<br>Outlookアカウントでのログインが必要です</div>
   <button id="gateLoginBtn" onclick="gateLogin()" style="margin-top:8px;background:#4f8ef7;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Segoe UI',sans-serif;display:inline-flex;align-items:center;gap:8px;">🔑 Outlookでログイン</button>
@@ -281,7 +281,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.43 (2026-10-01)</div>
+    <div class="header-ver">v2.44 (2026-10-01)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -1043,7 +1043,7 @@ async function searchBkgDV() {
       `cr49f_bookings?$filter=cr49f_booking_no eq '${bkgNo}'` +
       `&$select=cr49f_bookingid,cr49f_booking_no,cr49f_main_ship_name,` +
       `cr49f_cy_open,cr49f_cy_cut,cr49f_etd,crcf9_delivery_location,` +
-      `_cr49f_carrier_id_value,_cr49f_region_japan_id_value,_cr49f_region_id_value`
+      `_cr49f_carrier_id_value,_cr49f_region_japan_id_value,_cr49f_region_id_value,_cr49f_sale_contract_id_value`
     );
     if (!bkgData.value?.length) { showSearchAlert(`BKG「${bkgNo}」が見つかりません`,'err'); return; }
     S.currentBooking = bkgData.value[0];
@@ -1071,6 +1071,20 @@ async function searchBkgDV() {
     S.currentBooking._pol = polName||'(未取得)';
     S.currentBooking._pod = regionData.pod||'(未取得)';
     S.currentBooking._region = regionData.region||'';
+
+    // S/I Port of Discharge 取得 (陸揚港用)
+    const contractId = S.currentBooking['_cr49f_sale_contract_id_value'];
+    if (contractId) {
+      try {
+        const siRes = await dvGet(
+          `cr49f_s_is?$filter=_cr49f_sale_contract_id_value eq ${contractId}` +
+          `&$select=crcf9_port_of_discharge&$top=1`
+        );
+        S.currentBooking._portOfDischarge = siRes.value?.[0]?.crcf9_port_of_discharge || '';
+      } catch(e) { S.currentBooking._portOfDischarge = ''; }
+    } else {
+      S.currentBooking._portOfDischarge = '';
+    }
 
     // 3. コンテナ
     showLoading('コンテナ明細取得中...');
@@ -2461,6 +2475,7 @@ function buildHannyuhyoHtml(pkGrp, packerName) {
   const bkg  = S.currentBooking;
   const pol  = bkg._pol  || '';
   const pod  = bkg._pod  || '';
+  const rikuyoko = bkg._portOfDischarge || pod; // Port of Discharge優先、なければPOD
   const carrier = bkg._carrier || '';
   const region = (bkg._region || '').toUpperCase();
   const sig  = staffSig();
@@ -2554,7 +2569,7 @@ function buildHannyuhyoHtml(pkGrp, packerName) {
   </tr>
   <tr>
     <td class="hany-hd">陸揚港</td>
-    <td colspan="4" style="font-weight:bold;" contenteditable="true">${esc(pod)}</td>
+    <td colspan="4" style="font-weight:bold;" contenteditable="true">${esc(rikuyoko)}</td>
   </tr>
   <tr>
     <td class="hany-hd">最後仕向地</td>
