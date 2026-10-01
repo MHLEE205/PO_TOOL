@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.39</title>
+<title>LEENAI B-03 統合ツール v2.40</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
@@ -280,7 +280,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   <div class="logo">LEENAI<span>.</span></div>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.39 (2026-07-09)</div>
+    <div class="header-ver">v2.40 (2026-10-01)</div>
   </div>
   <button id="themeToggleBtn" onclick="toggleTheme()"
     style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
@@ -314,13 +314,13 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
     </div>
   </div>
 
-  <!-- 폴더 & Excel -->
+  <!-- SharePoint Excel -->
   <div class="card">
-    <div class="card-title"><span class="badge">STEP 2</span> データフォルダ (Booking_LN.xlsx)</div>
+    <div class="card-title"><span class="badge">STEP 2</span> データ読込 (SharePoint)</div>
     <div id="folderBanner" class="folder-banner">
-      <span style="font-size:20px;">📁</span>
-      <div class="folder-path">Booking_LN.xlsx が入っているフォルダを選択してください</div>
-      <button class="btn btn-primary" onclick="selectFolder()">フォルダを選択</button>
+      <span style="font-size:20px;">☁️</span>
+      <div class="folder-path">STEP 1 ログイン後に SharePoint から自動読み込みします</div>
+      <button class="btn btn-primary" onclick="loadExcelFromSharePoint()">再読込</button>
     </div>
     <div id="statusLoad" class="status-bar hidden" style="margin-top:10px;"></div>
   </div>
@@ -520,6 +520,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 const DB_NAME   = 'leenai_b03_v1';
 const DB_STORE  = 'settings';
 const EXCEL_NAME = 'Booking_LN.xlsx';
+const SP_EXCEL_SEGMENTS = ['古紙', '-. AI 活用', '通関依頼', 'Booking_LN.xlsx']; // SharePoint パス
 
 const CLIENT_ID    = 'f071a165-5e9b-44bf-b6a1-baba654524db';
 const TENANT_ID    = 'a56988ff-c2b8-4df8-9727-889ad4205198';
@@ -704,8 +705,7 @@ window.onload = async () => {
   buildStaffSelector(S.staffList);
   const savedStaff = localStorage.getItem('leenai_b03_staff');
   // 담당자 選択UI削除 — tryAutoSelectStaff() で自動マッチング
-  await tryRestoreFolder();
-  await handleCallback();
+  await handleCallback(); // v2.40: SharePoint 読み込みは handleCallback → acquireGraphTokenSilent → loadExcelFromSharePoint の流れで自動実行
 };
 
 // ══════════════════════════════════════════
@@ -744,75 +744,65 @@ function buildStaffSelector(list) { /* 担当者UI削除済 — tryAutoSelectSta
 function onStaffChange() { /* 担当者UI削除済 */ }
 
 // ══════════════════════════════════════════
-// 폴더 & Excel 읽기
+// SharePoint から Booking_LN.xlsx 読み込み (v2.40)
 // ══════════════════════════════════════════
-async function selectFolder() {
-  try {
-    const handle = await window.showDirectoryPicker({ mode:'read' });
-    S.rootHandle = handle;
-    await dbSet('rootHandle', handle);
-    await loadExcel();
-  } catch(e) { if (e.name !== 'AbortError') showSearchAlert('フォルダ選択エラー: '+e.message,'err'); }
-}
-async function tryRestoreFolder() {
-  try {
-    const handle = await dbGet('rootHandle');
-    if (!handle) return;
-    const perm = await handle.queryPermission({mode:'read'});
-    if (perm === 'granted') { S.rootHandle = handle; await loadExcel(); }
-    else showReconnect(handle);
-  } catch {}
-}
-function showReconnect(handle) {
-  document.getElementById('folderBanner').innerHTML = `
-    <span style="font-size:20px;">📁</span>
-    <div class="folder-path"><b>前回のフォルダ</b>に再接続が必要です</div>
-    <button class="btn btn-primary" onclick="reconnectFolder()">再接続</button>`;
-  window._pendingHandle = handle;
-}
-window.reconnectFolder = async () => {
-  try { await window._pendingHandle.requestPermission({mode:'read'}); S.rootHandle = window._pendingHandle; await loadExcel(); }
-  catch { showSearchAlert('再接続失敗。フォルダを再選択してください。','err'); }
-};
-
-async function loadExcel() {
+async function loadExcelFromSharePoint() {
   const statusEl = document.getElementById('statusLoad');
+  const banner   = document.getElementById('folderBanner');
+
+  if (!S.graphToken || Date.now() > (S.graphTokenExpiry || 0)) {
+    banner.className = 'folder-banner err';
+    banner.innerHTML = `
+      <span style="font-size:20px;">⚠️</span>
+      <div class="folder-path">STEP 1 でログインしてください（Graph トークン未取得）</div>
+      <button class="btn btn-primary btn-sm" onclick="loadExcelFromSharePoint()">再試行</button>`;
+    return;
+  }
+
   statusEl.className = 'status-bar info';
-  statusEl.innerHTML = '<span class="spinner"></span> Booking_LN.xlsx を読み込み中...';
+  statusEl.innerHTML = '<span class="spinner"></span> SharePoint から Booking_LN.xlsx を読み込み中...';
   statusEl.classList.remove('hidden');
+  banner.className = 'folder-banner';
+  banner.innerHTML = '<span class="spinner" style="font-size:20px;"></span><div class="folder-path">SharePoint から読み込み中...</div>';
+
   try {
-    const fh = await S.rootHandle.getFileHandle(EXCEL_NAME);
-    const file = await fh.getFile();
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array', raw:true});
+    const path = SP_EXCEL_SEGMENTS.map(s => encodeURIComponent(s)).join('/');
+    const url  = `https://graph.microsoft.com/v1.0/sites/leenear.sharepoint.com:/sites/leenearsite1:/drive/root:/${path}:/content`;
+    const res  = await fetch(url, { headers: { 'Authorization': `Bearer ${S.graphToken}` } });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
+    const buf = await res.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: 'array', raw: true });
 
     // M_HSCODE
     const hsSh = wb.Sheets['M_HSCODE'];
-    if (hsSh) XLSX.utils.sheet_to_json(hsSh,{defval:''}).forEach(r => {
+    if (hsSh) XLSX.utils.sheet_to_json(hsSh, {defval:''}).forEach(r => {
       if (r.ITEM_CODE) S.hscodeMap[r.ITEM_CODE.trim()] = r.HS_CODE;
     });
 
     // M_FORWARDER
     const fwdSh = wb.Sheets['M_FORWARDER'];
-    if (fwdSh) S.forwarderList = XLSX.utils.sheet_to_json(fwdSh,{defval:''});
+    if (fwdSh) S.forwarderList = XLSX.utils.sheet_to_json(fwdSh, {defval:''});
 
-    // M_PACKER_ADDR (住所)
+    // M_PACKER_ADDR
     const addrSh = wb.Sheets['M_PACKER_ADDR'];
-    if (addrSh) XLSX.utils.sheet_to_json(addrSh,{defval:''}).forEach(r => {
+    if (addrSh) XLSX.utils.sheet_to_json(addrSh, {defval:''}).forEach(r => {
       const plant = (r['PLANT_NAME'] || '').trim();
       if (plant) S.plantAddrMap[plant] = {packer_name: r['PACKER_NAME(日)']||'', address: r['住所']||''};
     });
 
-    // M_DRAY_MAIL (드레이 메일) — 컬럼: 略称, TO(メイン), CC
+    // M_DRAY_MAIL
     const drayMailSh = wb.Sheets['M_DRAY_MAIL'];
-    if (drayMailSh) XLSX.utils.sheet_to_json(drayMailSh,{defval:''}).forEach(r => {
+    if (drayMailSh) XLSX.utils.sheet_to_json(drayMailSh, {defval:''}).forEach(r => {
       const key = (r['略称'] || '').trim();
       if (key) S.drayMailMap[key] = {to: r['TO (メイン)']||'', cc: r['CC']||''};
     });
 
-    // M_PACKER_MAIL (Packer 메일) — 컬럼: 社名, TO(メイン), TO(サブ), CC, 支払条件
+    // M_PACKER_MAIL
     const pkMailSh = wb.Sheets['M_PACKER_MAIL'];
-    if (pkMailSh) XLSX.utils.sheet_to_json(pkMailSh,{defval:''}).forEach(r => {
+    if (pkMailSh) XLSX.utils.sheet_to_json(pkMailSh, {defval:''}).forEach(r => {
       const key = (r['社名'] || '').trim();
       if (key) S.packerMailMap[key] = {
         to: r['TO (メイン)']||'', to2: r['TO (サブ)']||'',
@@ -824,37 +814,35 @@ async function loadExcel() {
     // M_STAFF
     const staffSh = wb.Sheets['M_STAFF'];
     if (staffSh) {
-      const rows = XLSX.utils.sheet_to_json(staffSh,{defval:''});
+      const rows = XLSX.utils.sheet_to_json(staffSh, {defval:''});
       if (rows.length) {
         S.staffList = rows.map(r => ({
-          code:r['STAFF_CODE']||'', ja:r['名前(日)']||'', en:r['名前(英)']||'',
-          email:r['EMAIL']||'', tel:r['TEL']||'+81-3-3528-9850', fax:r['FAX']||'+81-3-3528-9851'
-        })).filter(s=>s.code);
+          code: r['STAFF_CODE']||'', ja: r['名前(日)']||'', en: r['名前(英)']||'',
+          email: r['EMAIL']||'', tel: r['TEL']||'+81-3-3528-9850', fax: r['FAX']||'+81-3-3528-9851'
+        })).filter(s => s.code);
         buildStaffSelector(S.staffList);
-        const saved = localStorage.getItem('leenai_b03_staff');
         tryAutoSelectStaff();
-        // Azure AD ログイン済みなら自動マッチング再試行
         tryAutoSelectStaff();
       }
     }
 
     const drayMailCount = Object.keys(S.drayMailMap).length;
-    const pkMailCount = Object.keys(S.packerMailMap).length;
+    const pkMailCount   = Object.keys(S.packerMailMap).length;
 
-    document.getElementById('folderBanner').className = 'folder-banner ok';
-    document.getElementById('folderBanner').innerHTML = `
+    banner.className = 'folder-banner ok';
+    banner.innerHTML = `
       <span style="font-size:20px;">✅</span>
-      <div class="folder-path"><b>${S.rootHandle.name}</b> / ${EXCEL_NAME} — ドレーメール ${drayMailCount}件 / Packerメール ${pkMailCount}件</div>
-      <button class="btn btn-ghost btn-sm" onclick="selectFolder()">変更</button>`;
+      <div class="folder-path">☁️ SharePoint / 通関依頼 / Booking_LN.xlsx — ドレーメール ${drayMailCount}件 / Packerメール ${pkMailCount}件</div>
+      <button class="btn btn-ghost btn-sm" onclick="loadExcelFromSharePoint()">更新</button>`;
     statusEl.className = 'status-bar ok';
     statusEl.textContent = `✅ 読み込み完了 — M_DRAY_MAIL ${drayMailCount}件 / M_PACKER_MAIL ${pkMailCount}件`;
 
   } catch(e) {
-    document.getElementById('folderBanner').className = 'folder-banner err';
-    document.getElementById('folderBanner').innerHTML = `
+    banner.className = 'folder-banner err';
+    banner.innerHTML = `
       <span style="font-size:20px;">⚠️</span>
       <div class="folder-path">${e.message}</div>
-      <button class="btn btn-primary btn-sm" onclick="selectFolder()">再選択</button>`;
+      <button class="btn btn-primary btn-sm" onclick="loadExcelFromSharePoint()">再試行</button>`;
     statusEl.className = 'status-bar err';
     statusEl.textContent = '❌ 読み込み失敗 — ' + e.message;
   }
@@ -987,7 +975,7 @@ async function acquireGraphTokenSilent() {
         client_id: CLIENT_ID,
         grant_type: 'refresh_token',
         refresh_token: S.refreshToken,
-        scope: 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read openid profile offline_access'
+        scope: 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All openid profile offline_access'
       })
     });
     const data = await res.json();
@@ -1001,6 +989,7 @@ async function acquireGraphTokenSilent() {
         graphMailBtn.style.background = 'var(--ok)';
         graphMailBtn.style.color = '#fff';
       }
+      loadExcelFromSharePoint(); // v2.40: Graph トークン取得後に自動読み込み
     } else {
       // サイレント失敗 → ボタンを「クリックして認証」状態に
       if (graphMailBtn) {
