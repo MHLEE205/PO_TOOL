@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx CDN 削除済 (v3.6: マスター移行によりエクセル読込不要) -->
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -479,8 +479,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 // ══════════════════════════════════════════
 const DB_NAME   = 'leenai_b03_v1';
 const DB_STORE  = 'settings';
-const EXCEL_NAME = 'Booking_LN.xlsx';
-const SP_EXCEL_SEGMENTS = ['古紙', '-. AI 活用', '通関依頼', 'Booking_LN.xlsx']; // SharePoint パス
+// EXCEL_NAME / SP_EXCEL_SEGMENTS 削除済 (v3.6: マスター移行)
 
 const DV_URL       = 'https://orgde512c6f.crm7.dynamics.com';
 const DV_API       = `${DV_URL}/api/data/v9.2`;
@@ -681,119 +680,76 @@ function buildStaffSelector(list) { /* 担当者UI削除済 — tryAutoSelectSta
 function onStaffChange() { /* 担当者UI削除済 */ }
 
 // ══════════════════════════════════════════
-// SharePoint から Booking_LN.xlsx 読み込み (v2.40)
+// マスター読込 (v3.6: LEENAI.master アダプター方式)
 // ══════════════════════════════════════════
 async function loadExcelFromSharePoint() {
-  const statusEl = document.getElementById('statusLoad');
-  const banner   = document.getElementById('folderBanner');
+  var statusEl = document.getElementById('statusLoad');
+  var banner   = document.getElementById('folderBanner');
 
-  S.graphToken = await LEENAI.auth.token('graph'); if (!S.graphToken) {
-    banner.className = 'folder-banner err';
-    banner.innerHTML = `
-      <span style="font-size:20px;">⚠️</span>
-      <div class="folder-path">STEP 1 でログインしてください（Graph トークン未取得）</div>
-      <button class="btn btn-primary btn-sm" onclick="loadExcelFromSharePoint()">再試行</button>`;
-    return;
-  }
-
-  statusEl.className = 'status-bar info';
-  statusEl.innerHTML = '<span class="spinner"></span> SharePoint から Booking_LN.xlsx を読み込み中...';
-  statusEl.classList.remove('hidden');
   banner.className = 'folder-banner';
-  banner.innerHTML = '<span class="spinner" style="font-size:20px;"></span><div class="folder-path">SharePoint から読み込み中...</div>';
+  banner.innerHTML = '<span class="spinner" style="font-size:20px;"></span><div class="folder-path">マスターを読み込み中...</div>';
+  if(statusEl){ statusEl.className='status-bar info'; statusEl.innerHTML='<span class="spinner"></span> マスターを読み込み中...'; statusEl.classList.remove('hidden'); }
 
   try {
-    /* Drive ID を先に取得 — 正しい path-based 構文: {host}:{path}:/navigation */
-    const driveRes = await fetch(
-      'https://graph.microsoft.com/v1.0/sites/leenear.sharepoint.com:/sites/leenearsite1:/drive',
-      { headers: { 'Authorization': `Bearer ${S.graphToken}` } }
-    );
-    if (!driveRes.ok) {
-      const errText = await driveRes.text().catch(() => driveRes.statusText);
-      throw new Error(`Drive取得失敗 HTTP ${driveRes.status}: ${errText}`);
-    }
-    const driveData = await driveRes.json();
-    const driveId = driveData.id;
+    var results = await Promise.all([
+      LEENAI.master.get('hscode'),
+      LEENAI.master.get('forwarder'),
+      LEENAI.master.get('packer_addr'),
+      LEENAI.master.get('dray'),
+      LEENAI.master.get('packer_mail'),
+      LEENAI.master.get('staff')
+    ]);
+    var hsItems   = results[0];
+    var fwdItems  = results[1];
+    var addrItems = results[2];
+    var drayItems = results[3];
+    var pkItems   = results[4];
+    var stItems   = results[5];
 
-    const path = SP_EXCEL_SEGMENTS.map(s => encodeURIComponent(s)).join('/');
-    const url  = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${path}:/content`;
-    const res  = await fetch(url, { headers: { 'Authorization': `Bearer ${S.graphToken}` } });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => res.statusText);
-      throw new Error(`HTTP ${res.status}: ${errText}`);
-    }
-    const buf = await res.arrayBuffer();
-    const wb  = XLSX.read(buf, { type: 'array', raw: true });
+    /* hscode → S.hscodeMap */
+    S.hscodeMap = {};
+    (hsItems||[]).forEach(function(r){ if(r.item_code) S.hscodeMap[r.item_code.trim()] = r.hs_code||''; });
 
-    // M_HSCODE
-    const hsSh = wb.Sheets['M_HSCODE'];
-    if (hsSh) XLSX.utils.sheet_to_json(hsSh, {defval:''}).forEach(r => {
-      if (r.ITEM_CODE) S.hscodeMap[r.ITEM_CODE.trim()] = r.HS_CODE;
+    /* forwarder → S.forwarderList (엑셀 열 이름으로 복원 — v3.4 乙仲選択が使用) */
+    S.forwarderList = (fwdItems||[]).map(function(r){
+      return {'POL':r.pol||'','CARRIER':r.carrier||'','乙仲名':r.name||'',
+              'TO (メイン)':r.to_main||'','TO (サブ)':r.to_sub||'','CC':r.cc||'',
+              '確認状況':r.status||'','担当者名':r.contact||''};
     });
 
-    // M_FORWARDER
-    const fwdSh = wb.Sheets['M_FORWARDER'];
-    if (fwdSh) S.forwarderList = XLSX.utils.sheet_to_json(fwdSh, {defval:''});
+    /* packer_addr → S.plantAddrMap */
+    S.plantAddrMap = {};
+    (addrItems||[]).forEach(function(r){ var p=(r.plant||'').trim(); if(p) S.plantAddrMap[p]={packer_name:r.packer_name||'',address:r.address||''}; });
 
-    // M_PACKER_ADDR
-    const addrSh = wb.Sheets['M_PACKER_ADDR'];
-    if (addrSh) XLSX.utils.sheet_to_json(addrSh, {defval:''}).forEach(r => {
-      const plant = (r['PLANT_NAME'] || '').trim();
-      if (plant) S.plantAddrMap[plant] = {packer_name: r['PACKER_NAME(日)']||'', address: r['住所']||''};
+    /* dray → S.drayMailMap */
+    S.drayMailMap = {};
+    (drayItems||[]).forEach(function(r){ var k=(r.short||'').trim(); if(k) S.drayMailMap[k]={to:r.to||'',cc:r.cc||''}; });
+
+    /* packer_mail → S.packerMailMap */
+    S.packerMailMap = {};
+    (pkItems||[]).forEach(function(r){ var k=(r.name||'').trim(); if(k) S.packerMailMap[k]={to:r.to_main||'',to2:r.to_sub||'',cc:r.cc||'',payment:r.payment||'',person:r.contact||''}; });
+
+    /* staff → S.staffList */
+    var stList = (stItems||[]).filter(function(r){return r.code;}).map(function(r){
+      return {code:r.code||'',ja:r.name_ja||'',en:r.name_en||'',email:r.email||'',tel:r.tel||'+81-3-3528-9850',fax:r.fax||'+81-3-3528-9851'};
     });
+    if(stList.length){ S.staffList=stList; buildStaffSelector(S.staffList); tryAutoSelectStaff(); tryAutoSelectStaff(); }
 
-    // M_DRAY_MAIL
-    const drayMailSh = wb.Sheets['M_DRAY_MAIL'];
-    if (drayMailSh) XLSX.utils.sheet_to_json(drayMailSh, {defval:''}).forEach(r => {
-      const key = (r['略称'] || '').trim();
-      if (key) S.drayMailMap[key] = {to: r['TO (メイン)']||'', cc: r['CC']||''};
-    });
-
-    // M_PACKER_MAIL
-    const pkMailSh = wb.Sheets['M_PACKER_MAIL'];
-    if (pkMailSh) XLSX.utils.sheet_to_json(pkMailSh, {defval:''}).forEach(r => {
-      const key = (r['社名'] || '').trim();
-      if (key) S.packerMailMap[key] = {
-        to: r['TO (メイン)']||'', to2: r['TO (サブ)']||'',
-        cc: r['CC']||'', payment: r['支払条件']||'',
-        person: r['担当者']||''
-      };
-    });
-
-    // M_STAFF
-    const staffSh = wb.Sheets['M_STAFF'];
-    if (staffSh) {
-      const rows = XLSX.utils.sheet_to_json(staffSh, {defval:''});
-      if (rows.length) {
-        S.staffList = rows.map(r => ({
-          code: r['STAFF_CODE']||'', ja: r['名前(日)']||'', en: r['名前(英)']||'',
-          email: r['EMAIL']||'', tel: r['TEL']||'+81-3-3528-9850', fax: r['FAX']||'+81-3-3528-9851'
-        })).filter(s => s.code);
-        buildStaffSelector(S.staffList);
-        tryAutoSelectStaff();
-        tryAutoSelectStaff();
-      }
-    }
-
-    const drayMailCount = Object.keys(S.drayMailMap).length;
-    const pkMailCount   = Object.keys(S.packerMailMap).length;
+    var drayCount = Object.keys(S.drayMailMap).length;
+    var pkCount   = Object.keys(S.packerMailMap).length;
 
     banner.className = 'folder-banner ok';
-    banner.innerHTML = `
-      <span style="font-size:20px;">✅</span>
-      <div class="folder-path">☁️ SharePoint / 通関依頼 / Booking_LN.xlsx — ドレーメール ${drayMailCount}件 / Packerメール ${pkMailCount}件</div>
-      <button class="btn btn-ghost btn-sm" onclick="loadExcelFromSharePoint()">更新</button>`;
-    statusEl.className = 'status-bar ok';
-    statusEl.textContent = `✅ 読み込み完了 — M_DRAY_MAIL ${drayMailCount}件 / M_PACKER_MAIL ${pkMailCount}件`;
+    banner.innerHTML = '<span style="font-size:20px;">✅</span>' +
+      '<div class="folder-path">マスター読込済み — ドレー'+drayCount+'件 / Packer'+pkCount+'件</div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="loadExcelFromSharePoint()">更新</button>';
+    if(statusEl){ statusEl.className='status-bar ok'; statusEl.textContent='✅ 読み込み完了 — M_DRAY_MAIL '+drayCount+'件 / M_PACKER_MAIL '+pkCount+'件'; }
 
   } catch(e) {
     banner.className = 'folder-banner err';
-    banner.innerHTML = `
-      <span style="font-size:20px;">⚠️</span>
-      <div class="folder-path">${e.message}</div>
-      <button class="btn btn-primary btn-sm" onclick="loadExcelFromSharePoint()">再試行</button>`;
-    statusEl.className = 'status-bar err';
-    statusEl.textContent = '❌ 読み込み失敗 — ' + e.message;
+    banner.innerHTML = '<span style="font-size:20px;">⚠️</span>' +
+      '<div class="folder-path">マスターを読み込めません。⚙ マスター設定 を確認してください ('+e.message+')</div>' +
+      '<button class="btn btn-primary btn-sm" onclick="loadExcelFromSharePoint()">再試行</button>';
+    if(statusEl){ statusEl.className='status-bar err'; statusEl.textContent='❌ 読み込み失敗 — '+e.message; }
   }
 }
 
@@ -3138,7 +3094,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.5',
+  version: '3.6',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
