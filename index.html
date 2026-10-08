@@ -1,37 +1,16 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LEENAI B-03 統合ツール v2.44</title>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
    CSS 변수 — 다크 테마 (라이트 전환: [data-theme="light"] 오버라이드만 추가)
    ══════════════════════════════════════════ */
-:root {
-  --bg:       #0f1117;
-  --surface:  #1a1d27;
-  --surface2: #22263a;
-  --surface3: #2a2f46;
-  --border:   #2e3350;
-  --accent:   #4f8ef7;
-  --accent2:  #6fa3ff;
-  --ok:       #22c55e;
-  --warn:     #f59e0b;
-  --danger:   #ef4444;
-  --info:     #38bdf8;
-  --purple:   #a78bfa;
-  --text:     #e2e8f0;
-  --text2:    #8892a4;
-  --text3:    #4a5568;
-  --radius:   10px;
-  --tab-h:    44px;
-}
-[data-theme="light"] {
-  --bg:#f4f6fb; --surface:#ffffff; --surface2:#f0f4ff; --surface3:#e8edf7;
-  --border:#d1d5db; --text:#111827; --text2:#6b7280; --text3:#9ca3af;
-}
+:root { --tab-h:44px; --radius:10px; --purple:#a78bfa; }
+
 
 /* ── Reset ── */
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -56,7 +35,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 .main{max-width:1050px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px;}
 
 /* ── Card ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;}
+.card{background:var(--read);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;}
 .card-title{font-weight:700;font-size:13px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 .badge{font-size:10px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700;}
 .badge-ok{background:var(--ok);}
@@ -72,7 +51,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .15s;white-space:nowrap;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
-.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary{background:var(--accent-btn);color:#fff;}
 .btn-primary:hover:not(:disabled){filter:brightness(1.1);}
 .btn-ok{background:var(--ok);color:#fff;}
 .btn-ok:hover:not(:disabled){filter:brightness(1.1);}
@@ -185,7 +164,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 
 .section-title{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
 
-.result-card{background:var(--surface2);border:1px solid var(--ok);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:14px;}
+.result-card{background:var(--read);border:1px solid var(--ok);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:14px;}
 
 .cy-row{display:flex;align-items:center;gap:10px;}
 .cy-input{flex:1;background:var(--surface);border:1.5px solid var(--warn);color:var(--text);padding:7px 12px;border-radius:8px;font-size:13px;font-family:inherit;}
@@ -255,41 +234,13 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
 .loading-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 40px;text-align:center;}
 .loading-msg{font-weight:600;margin-top:10px;color:var(--text2);}
 </style>
+<link rel="stylesheet" href="https://mhlee205.github.io/LEENAI_COMMON/v1/leenai-common.css">
+<script src="https://mhlee205.github.io/LEENAI_COMMON/v1/leenai-common.js"></script>
+<script>if(!window.LEENAI){document.addEventListener('DOMContentLoaded',function(){document.body.innerHTML='<div style="padding:40px;font-family:sans-serif">共通ファイルの読み込みに失敗しました。ページを再読み込みしてください。</div>';});}</script>
 </head>
 <body>
 
-<div id="loginGate" style="display:flex;position:fixed;inset:0;background:#0f1117;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
-  <div style="font-size:40px;font-weight:800;letter-spacing:3px;color:#e2e8f0;">LEEN<span style="color:#4f8ef7">AI</span></div>
-  <div style="font-size:11px;color:#fff;background:#4f8ef7;padding:2px 10px;border-radius:12px;font-weight:700;letter-spacing:1px;">SYS-B-03</div>
-  <div style="font-size:13px;color:#8892a4;font-weight:500;">B-03 統合ツール v2.44</div>
-  <div style="width:48px;height:1px;background:#2e3350;margin:12px 0;"></div>
-  <div style="font-size:12px;color:#4a5568;text-align:center;line-height:1.8;">このツールを使用するには<br>Outlookアカウントでのログインが必要です</div>
-  <button id="gateLoginBtn" onclick="gateLogin()" style="margin-top:8px;background:#4f8ef7;color:#fff;border:none;padding:11px 32px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Segoe UI',sans-serif;display:inline-flex;align-items:center;gap:8px;">🔑 Outlookでログイン</button>
-  <div id="gateStatus" style="font-size:11px;color:#8892a4;height:18px;"></div>
-</div>
-
-<!-- Loading Overlay -->
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="loading-box">
-    <div class="spinner" style="width:28px;height:28px;border-width:3px;"></div>
-    <div class="loading-msg" id="loadingMsg">データ取得中...</div>
-  </div>
-</div>
-
-<!-- Header -->
-<div class="header">
-  <div class="logo">LEENAI<span>.</span></div>
-  <div style="display:flex;align-items:center;gap:6px;">
-    <div class="header-subtitle">B-03 統合ツール</div>
-    <div class="header-ver">v2.44 (2026-10-01)</div>
-  </div>
-  <button id="themeToggleBtn" onclick="toggleTheme()"
-    style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;">
-    🌙 ダーク
-  </button>
-  <div class="header-user" id="headerUser">🔑 <span id="dvUserName"></span></div>
-</div>
-
+<div id="app" style="display:none">
 <!-- Tab Bar -->
 <div class="tab-bar">
   <button class="tab-btn active" id="tabBtnA" onclick="switchTab('A')">
@@ -512,6 +463,7 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
   </div>
 
 </div><!-- /tabC -->
+</div><!-- /app -->
 
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
@@ -523,14 +475,8 @@ const DB_STORE  = 'settings';
 const EXCEL_NAME = 'Booking_LN.xlsx';
 const SP_EXCEL_SEGMENTS = ['古紙', '-. AI 活用', '通関依頼', 'Booking_LN.xlsx']; // SharePoint パス
 
-const CLIENT_ID    = 'f071a165-5e9b-44bf-b6a1-baba654524db';
-const TENANT_ID    = 'a56988ff-c2b8-4df8-9727-889ad4205198';
 const DV_URL       = 'https://orgde512c6f.crm7.dynamics.com';
 const DV_API       = `${DV_URL}/api/data/v9.2`;
-const REDIRECT_URI = 'https://mhlee205.github.io/PO_TOOL/';
-const SCOPE        = `${DV_URL}/user_impersonation openid profile email offline_access`;
-const GRAPH_SCOPE  = 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read openid profile';
-
 const OTSUNAKA_KEN = {
   'OSAKA':'ぺがさす物流', 'KOBE':'ぺがさす物流',
   'NAGOYA':'セイユー商事', 'HAKATA':'住友倉庫九州', 'SENDAI':'NX仙台塩竈港運',
@@ -676,19 +622,7 @@ async function dbSet(key, val) {
 // ══════════════════════════════════════════
 // テーマ切替
 // ══════════════════════════════════════════
-function toggleTheme() {
-  const html = document.documentElement;
-  const isDark = html.getAttribute('data-theme') === 'dark';
-  const next = isDark ? 'light' : 'dark';
-  html.setAttribute('data-theme', next);
-  localStorage.setItem('leenai_theme', next);
-  updateThemeBtn(next);
-}
-function updateThemeBtn(theme) {
-  const btn = document.getElementById('themeToggleBtn');
-  if (!btn) return;
-  btn.textContent = theme === 'dark' ? '🌙 ダーク' : '☀️ ライト';
-}
+
 // 前回テーマ復元
 (function() {
   const saved = localStorage.getItem('leenai_theme') || 'dark';
@@ -700,14 +634,7 @@ function updateThemeBtn(theme) {
 // ══════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════
-window.onload = async () => {
-  updateThemeBtn(document.documentElement.getAttribute('data-theme') || 'dark');
-  S.staffList = [...DEFAULT_STAFF];
-  buildStaffSelector(S.staffList);
-  const savedStaff = localStorage.getItem('leenai_b03_staff');
-  // 담당자 選択UI削除 — tryAutoSelectStaff() で自動マッチング
-  await handleCallback(); // v2.40: SharePoint 読み込みは handleCallback → acquireGraphTokenSilent → loadExcelFromSharePoint の流れで自動実行
-};
+
 
 // ══════════════════════════════════════════
 // TAB 전환
@@ -751,7 +678,7 @@ async function loadExcelFromSharePoint() {
   const statusEl = document.getElementById('statusLoad');
   const banner   = document.getElementById('folderBanner');
 
-  if (!S.graphToken || Date.now() > (S.graphTokenExpiry || 0)) {
+  S.graphToken = await LEENAI.auth.token('graph'); if (!S.graphToken) {
     banner.className = 'folder-banner err';
     banner.innerHTML = `
       <span style="font-size:20px;">⚠️</span>
@@ -879,142 +806,6 @@ function clearAll() {
 // ══════════════════════════════════════════
 // ── TAB A: PKCE OAuth + Dataverse ──
 // ══════════════════════════════════════════
-function b64url(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,''); }
-async function sha256(str) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); }
-function randomStr(len=64) { const a=new Uint8Array(len); crypto.getRandomValues(a); return b64url(a).slice(0,len); }
-
-async function gateLogin() {
-  const btn = document.getElementById('gateLoginBtn');
-  btn.disabled = true;
-  document.getElementById('gateStatus').textContent = 'ログイン中...';
-  try {
-    await startLogin();
-  } catch(e) {
-    btn.disabled = false;
-    document.getElementById('gateStatus').textContent = e.message !== 'CANCELLED' ? 'エラー: ' + e.message : '';
-  }
-}
-
-async function startLogin() {
-  const verifier = randomStr(64);
-  const challenge = b64url(await sha256(verifier));
-  const state = randomStr(16);
-  sessionStorage.setItem('pkce_v', verifier);
-  sessionStorage.setItem('pkce_s', state);
-  const params = new URLSearchParams({
-    client_id: CLIENT_ID, response_type:'code', redirect_uri: REDIRECT_URI,
-    scope: SCOPE, state, code_challenge: challenge, code_challenge_method:'S256'
-  });
-  location.href = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?${params}`;
-}
-
-async function handleCallback() {
-  const params = new URLSearchParams(location.search);
-  const code = params.get('code');
-  if (!code) return;
-  history.replaceState({}, '', location.pathname);
-  const verifier = sessionStorage.getItem('pkce_v');
-  showLoading('認証中...');
-  try {
-    // ① DV トークン取得
-    const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({
-        client_id:CLIENT_ID, grant_type:'authorization_code',
-        code, redirect_uri:REDIRECT_URI, code_verifier:verifier, scope:SCOPE
-      })
-    });
-    const data = await res.json();
-    if (!data.access_token) throw new Error(data.error_description || 'トークン取得失敗');
-
-    S.accessToken = data.access_token;
-    S.tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-    S.refreshToken = data.refresh_token || null;
-
-    // ② id_token JWT デコード → ユーザー情報確実取得（Graph APIより信頼性高い）
-    document.getElementById('dvLoginCard').classList.add('hidden');
-    document.getElementById('headerUser').style.display = 'flex';
-    const gate = document.getElementById('loginGate'); if (gate) gate.style.display = 'none';
-    updateScLoginStatus();
-
-    if (data.id_token) {
-      try {
-        const parts = data.id_token.split('.');
-        const b64 = parts[1].replace(/-/g,'+').replace(/_/g,'/');
-        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-        const payload = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-        const email = (payload.email || payload.preferred_username || '').toLowerCase();
-        const name  = payload.name || '';
-        S.loggedInEmail = email;
-        S.loggedInUser  = { name, tel:'03-3528-9850', fax:'03-3528-9851' };
-        document.getElementById('dvUserName').textContent = name;
-        console.log('[LEENAI] id_token decode OK:', name, email);
-      } catch(e) { console.warn('[LEENAI] id_token decode失敗:', e); }
-    }
-    // Graph /me フォールバック（id_tokenで取れなかった場合のみ）
-    if (!S.loggedInEmail) {
-      try {
-        const me = await fetch('https://graph.microsoft.com/v1.0/me',
-          {headers:{Authorization:`Bearer ${S.accessToken}`}}).then(r=>r.json());
-        if (me.mail || me.userPrincipalName) {
-          S.loggedInEmail = (me.mail || me.userPrincipalName || '').toLowerCase();
-          S.loggedInUser  = { name: me.displayName||'', tel:'03-3528-9850', fax:'03-3528-9851' };
-          document.getElementById('dvUserName').textContent = me.displayName || '';
-        }
-      } catch(e) { console.warn('[LEENAI] Graph /me失敗:', e.message); }
-    }
-    tryAutoSelectStaff();
-
-    // ③ refresh_token で Graph トークンを即時取得 (redirect 불필요)
-    if (S.refreshToken) {
-      await acquireGraphTokenSilent();
-    }
-  } catch(e) {
-    showSearchAlert('認証エラー: '+e.message,'err');
-  }
-  finally { hideLoading(); }
-}
-
-// refresh_token → Graph トークン (サイレント)
-async function acquireGraphTokenSilent() {
-  if (!S.refreshToken) return;
-  const graphMailBtn = document.getElementById('graphMailBtn');
-  try {
-    const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({
-        client_id: CLIENT_ID,
-        grant_type: 'refresh_token',
-        refresh_token: S.refreshToken,
-        scope: 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/Files.Read.All openid profile offline_access'
-      })
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      S.graphToken = data.access_token;
-      S.graphTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-      if (data.refresh_token) S.refreshToken = data.refresh_token; // 갱신
-      if (graphMailBtn) {
-        graphMailBtn.textContent = '✅ メール認証済み';
-        graphMailBtn.disabled = true;
-        graphMailBtn.style.background = 'var(--ok)';
-        graphMailBtn.style.color = '#fff';
-      }
-      loadExcelFromSharePoint(); // v2.40: Graph トークン取得後に自動読み込み
-    } else {
-      // サイレント失敗 → ボタンを「クリックして認証」状態に
-      if (graphMailBtn) {
-        graphMailBtn.textContent = '📧 メール認証 (クリック)';
-        graphMailBtn.disabled = false;
-      }
-    }
-  } catch {
-    if (graphMailBtn) { graphMailBtn.textContent = '📧 メール認証 (クリック)'; }
-  }
-}
-
 async function dvGet(path) {
   const res = await fetch(`${DV_API}/${path}`, {
     headers:{
@@ -1030,7 +821,7 @@ async function dvGet(path) {
 async function searchBkgDV() {
   const bkgNo = document.getElementById('searchInput').value.trim().toUpperCase();
   if (!bkgNo) { showSearchAlert('BKG No.を入力してください','warn'); return; }
-  if (!S.accessToken || Date.now() > S.tokenExpiry) { showSearchAlert('セッション切れ。再ログインしてください。','err'); return; }
+  S.accessToken = await LEENAI.auth.token('dataverse'); if (!S.accessToken) { showSearchAlert('セッション切れ。再ログインしてください。','err'); return; }
 
   document.getElementById('searchBtn').disabled = true;
   document.getElementById('resultAreaA').classList.add('hidden');
@@ -1481,7 +1272,7 @@ function getForwarders(pol, carrier) {
 async function searchBkgB() {
   const kw = document.getElementById('searchInput').value.trim().toUpperCase();
   if (!kw) { showSearchAlert('BKG No または I/V No を入力してください','warn'); return; }
-  if (!S.accessToken || Date.now() > S.tokenExpiry) {
+  S.accessToken = await LEENAI.auth.token('dataverse'); if (!S.accessToken) {
     showSearchAlert('COMPASSログインが必要です。タブAでログインしてください','err'); return;
   }
   document.getElementById('resultAreaB').classList.add('hidden');
@@ -1882,7 +1673,7 @@ function safeToBase64(str) {
 }
 
 async function createOutlookDraft(to, cc, subject, bodyText, docHtml, docName) {
-  if (!S.graphToken || Date.now() > S.graphTokenExpiry) {
+  S.graphToken = await LEENAI.auth.token('graph'); if (!S.graphToken) {
     throw new Error('メール認証が必要です。ヘッダーの [📧 メール認証] ボタンをクリックしてください。');
   }
   const toList = to.split(/[,;]/).map(e=>e.trim()).filter(Boolean);
@@ -2797,7 +2588,7 @@ function updateScLoginStatus() {
   const msg = document.getElementById('scLoginMsg');
   const btn = document.getElementById('scLoginBtn');
   if (!msg) return;
-  if (S.accessToken && Date.now() < S.tokenExpiry) {
+  if (LEENAI.auth.status.dataverse === 'ok') {
     msg.innerHTML = '✅ <span style="color:var(--ok);">COMPASS接続済み</span>';
     if (btn) btn.style.display = 'none';
   } else {
@@ -2841,7 +2632,7 @@ async function doScSearch() {
   const diffDays = (new Date(to) - new Date(from)) / 86400000;
   if (diffDays < 0) { showScAlert('終了日は開始日より後にしてください'); return; }
   if (diffDays > 45) { showScAlert('期間は最大45日です。終了日を調整してください', 'warn'); return; }
-  if (!S.accessToken || Date.now() > S.tokenExpiry) {
+  S.accessToken = await LEENAI.auth.token('dataverse'); if (!S.accessToken) {
     showScAlert('COMPASSログインが必要です。タブAでログインしてください'); return;
   }
 
@@ -3064,6 +2855,29 @@ function exportScCsv() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+async function startTool() {
+  var u = LEENAI.user;
+  if (u && u.name) {
+    var el = document.getElementById('dvUserName'); if (el) el.textContent = u.name;
+    var hu = document.getElementById('headerUser'); if (hu) hu.style.display = '';
+  }
+  var dlc = document.getElementById('dvLoginCard'); if (dlc) dlc.style.display = 'none';
+  S.staffList = [...DEFAULT_STAFF];
+  buildStaffSelector(S.staffList);
+  try { await loadExcelFromSharePoint(); } catch(e) { console.warn('SP:', e.message); }
+}
+
+LEENAI.init({
+  sys: 'B-03',
+  name: 'P/O 発注ツール',
+  version: '3.1',
+  date: '2026-10-08',
+  desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
+  onReady: startTool,
+  redirectUri: 'https://mhlee205.github.io/PO_TOOL/',
+  needGraph: true
+});
 </script>
 </body>
 </html>
