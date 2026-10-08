@@ -3021,6 +3021,10 @@ async function startTool() {
   }
   var dlc = document.getElementById('dvLoginCard'); if (dlc) dlc.style.display = 'none';
   S.staffList = [...DEFAULT_STAFF];
+  // 担当者の自動選択 (v3.3): 共通ログイン移行 (v3.0/v3.1) で S.loggedInEmail の代入が失われていたため復元
+  S.loggedInEmail = ((u && u.email) || '').toLowerCase();
+  S.loggedInUser  = (u && u.name) ? { name: u.name } : null;
+  tryAutoSelectStaff();
   buildStaffSelector(S.staffList);
   try { await loadExcelFromSharePoint(); } catch(e) { console.warn('SP:', e.message); }
 }
@@ -3028,7 +3032,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.2',
+  version: '3.3',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
