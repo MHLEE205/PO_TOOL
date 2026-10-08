@@ -268,12 +268,12 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
     </div>
   </div>
 
-  <!-- SharePoint Excel -->
+  <!-- マスター -->
   <div class="card">
-    <div class="card-title"><span class="badge">STEP 2</span> データ読込 (SharePoint)</div>
+    <div class="card-title"><span class="badge">STEP 2</span> マスター (⚙ マスター設定)</div>
     <div id="folderBanner" class="folder-banner">
       <span style="font-size:20px;">☁️</span>
-      <div class="folder-path">STEP 1 ログイン後に SharePoint から自動読み込みします</div>
+      <div class="folder-path">ログイン後に SharePoint マスターから自動読み込みします</div>
       <button class="btn btn-primary" onclick="loadExcelFromSharePoint()">再読込</button>
     </div>
     <div id="statusLoad" class="status-bar hidden" style="margin-top:10px;"></div>
@@ -738,11 +738,27 @@ async function loadExcelFromSharePoint() {
     var drayCount = Object.keys(S.drayMailMap).length;
     var pkCount   = Object.keys(S.packerMailMap).length;
 
+    /* 6種の中で最新の updated_at・updated_by を取得 */
+    var masterNames = ['hscode','forwarder','packer_addr','dray','packer_mail','staff'];
+    var latestAt = '', latestBy = '';
+    masterNames.forEach(function(n){
+      var c = LEENAI._masterCache && LEENAI._masterCache[n];
+      var doc = c && c.doc;
+      if(doc && doc.updated_at && doc.updated_at > latestAt){ latestAt = doc.updated_at; latestBy = doc.updated_by||''; }
+    });
+    var latestStr = '';
+    if(latestAt){
+      try{
+        var d = new Date(latestAt);
+        latestStr = ' — 最終更新 '+(d.getMonth()+1)+'月'+d.getDate()+'日 '+latestBy;
+      }catch(e2){}
+    }
+
     banner.className = 'folder-banner ok';
     banner.innerHTML = '<span style="font-size:20px;">✅</span>' +
-      '<div class="folder-path">マスター読込済み — ドレー'+drayCount+'件 / Packer'+pkCount+'件</div>' +
+      '<div class="folder-path">マスター読込済み'+latestStr+'</div>' +
       '<button class="btn btn-ghost btn-sm" onclick="loadExcelFromSharePoint()">更新</button>';
-    if(statusEl){ statusEl.className='status-bar ok'; statusEl.textContent='✅ 読み込み完了 — M_DRAY_MAIL '+drayCount+'件 / M_PACKER_MAIL '+pkCount+'件'; }
+    if(statusEl){ statusEl.className='status-bar ok'; statusEl.textContent='✅ 読み込み完了 — ドレー業者 '+drayCount+'件 / Packer 連絡先 '+pkCount+'件'; }
 
   } catch(e) {
     banner.className = 'folder-banner err';
@@ -3094,7 +3110,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.6',
+  version: '3.7',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
