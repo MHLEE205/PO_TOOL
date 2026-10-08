@@ -329,6 +329,11 @@ body{font-family:'Segoe UI','Noto Sans JP',sans-serif;background:var(--bg);color
     <!-- Packer別グループ -->
     <div class="card">
       <div class="card-title"><span class="badge" style="background:var(--ok);">📋</span> Packer別グループ <small style="color:var(--text3);font-size:11px;margin-left:4px;">→ 送り状</small></div>
+      <div id="fwdSectionA" class="hidden" style="margin-bottom:14px;">
+        <div class="section-title">乙仲 — 搬入票・ブッキング通知に表示</div>
+        <div class="forwarder-selector" id="fwdSelectorA"></div>
+        <div id="fwdNoteA" style="font-size:11px;color:var(--text3);margin-top:6px;"></div>
+      </div>
       <div id="packerGroups"></div>
     </div>
 
@@ -578,6 +583,8 @@ const S = {
   // 탭 B (Excel)
   currentBkgB: null,
   currentFwdIdx: 0,
+  fwdChoiceA: '',
+  fwdCandsA: [],
   mailtoUrlB: '',
   mailBodyB: '',
 };
@@ -841,6 +848,7 @@ async function searchBkgDV() {
     if (!bkgData.value?.length) { showSearchAlert(`BKG「${bkgNo}」が見つかりません`,'err'); return; }
     S.currentBooking = bkgData.value[0];
     const bkgGuid = S.currentBooking.cr49f_bookingid;
+    S.currentBooking._fwdCompass = await loadBkgFwdCompass(bkgGuid);   // v3.4: COMPASS の Booking に登録された乙仲
 
     // 2. マスター並列
     showLoading('船社・港情報取得中...');
@@ -1095,6 +1103,9 @@ function renderResultA() {
 
   // CT 搬入票リスト (不要 — Packer単位で処理)
   // renderCtList(); → 削除
+
+  // 乙仲 選択欄 (v3.4)
+  renderFwdSelectorA();
 }
 
 function makeDrayCard(key, grp, idx) {
@@ -1269,6 +1280,83 @@ function getForwarders(pol, carrier) {
       (isOne ? (r.CARRIER||'').includes('ONE') : !(r.CARRIER||'').includes('ONE')));
   }
   return S.forwarderList.filter(r => r.POL===pol && r['確認状況']==='✅');
+}
+
+// ── 乙仲 (P/O・搬入票 タブ) — v3.4 ──
+// 搬入票の「扱い海貨業者名」とブッキング通知メールの「乙仲：」に使う乙仲を決める。
+// 優先順位: ① 画面で選んだ乙仲  ② COMPASS の Booking に登録された乙仲 (M_FORWARDER の名前と一致するもの)  ③ 先頭の候補 (従来の動作)
+function normFwdName(s) {
+  return String(s || '').replace(/株式会社|\(株\)|（株）|㈱|\s|\u3000/g, '').toLowerCase();
+}
+function fwdNameMatch(a, b) {
+  const x = normFwdName(a), y = normFwdName(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+}
+function pickFwd(cands) {
+  if (!cands || !cands.length) return null;
+  if (S.fwdChoiceA) {
+    const m = cands.find(r => r['乙仲名'] === S.fwdChoiceA);
+    if (m) return m;
+  }
+  const compass = S.currentBooking && S.currentBooking._fwdCompass;
+  if (compass) {
+    const m = cands.find(r => fwdNameMatch(r['乙仲名'], compass));
+    if (m) return m;
+  }
+  return cands[0];
+}
+// COMPASS の Booking に登録された乙仲 (フィールド名 cr49f_fowarder_id の綴りは COMPASS のまま)。失敗しても BKG 検索は止めない
+async function loadBkgFwdCompass(bkgGuid) {
+  try {
+    const d = await dvGet(`cr49f_bookings(${bkgGuid})?$select=_cr49f_fowarder_id_value`);
+    return d['_cr49f_fowarder_id_value@OData.Community.Display.V1.FormattedValue'] || '';
+  } catch (e) { console.warn('乙仲(COMPASS) 取得失敗:', e.message); return ''; }
+}
+function getFwdCandidatesA() {
+  const bkg = S.currentBooking;
+  if (!bkg) return [];
+  const seen = new Set();
+  return getForwarders(bkg._pol, bkg._carrier).filter(r => {
+    const n = r['乙仲名'];
+    if (!n || seen.has(n)) return false;
+    seen.add(n);
+    return true;
+  });
+}
+function renderFwdSelectorA() {
+  const sec = document.getElementById('fwdSectionA');
+  if (!sec) return;
+  S.fwdChoiceA = '';                       // BKG を検索し直すたびに自動選択へ戻す
+  S.fwdCandsA = getFwdCandidatesA();
+  const compass = (S.currentBooking && S.currentBooking._fwdCompass) || '';
+  if (!S.fwdCandsA.length && !compass) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  paintFwdSelectorA();
+}
+function paintFwdSelectorA() {
+  const sel = document.getElementById('fwdSelectorA');
+  const note = document.getElementById('fwdNoteA');
+  if (!sel || !note) return;
+  const cands = S.fwdCandsA || [];
+  const compass = (S.currentBooking && S.currentBooking._fwdCompass) || '';
+  const cur = pickFwd(cands);
+  sel.innerHTML = cands.length
+    ? cands.map((r, i) => `<button class="fwd-btn ${cur && r['乙仲名'] === cur['乙仲名'] ? 'active' : ''}" onclick="selectFwdA(${i})">${escH(r['乙仲名'])}</button>`).join('')
+    : '<span style="color:var(--warn);">乙仲マスター未登録 (M_FORWARDER)</span>';
+  const manual = S.fwdChoiceA ? ' / 手動選択中' : '';
+  if (!compass) {
+    note.innerHTML = 'COMPASS の Booking に乙仲の登録なし — 先頭の候補を使用しています。違う場合は上のボタンで選択してください。' + manual;
+  } else if (cands.some(r => fwdNameMatch(r['乙仲名'], compass))) {
+    note.innerHTML = 'COMPASS 登録: ' + escH(compass) + (S.fwdChoiceA ? manual : ' (自動選択)');
+  } else {
+    note.innerHTML = '⚠️ COMPASS 登録「' + escH(compass) + '」は M_FORWARDER に見つかりません。上のボタンで選択してください (現在は先頭の候補)。' + manual;
+  }
+}
+function selectFwdA(i) {
+  const r = (S.fwdCandsA || [])[i];
+  if (!r) return;
+  S.fwdChoiceA = r['乙仲名'];
+  paintFwdSelectorA();
 }
 
 async function searchBkgB() {
@@ -2064,8 +2152,8 @@ function makeBkgNoticeMailBody(packerName, pkGrp) {
   }
   const ctLine = Object.entries(ctTypes).map(([t,n]) => `${t} × ${n}`).join(' / ');
   // 乙仲
-  const fwds = getForwarders(pol, carrier);
-  const fwdName = fwds.length > 0 ? fwds[0]['乙仲名'] : '';
+  const fwdPick = pickFwd(getForwarders(pol, carrier));   // v3.4: 選択 → COMPASS 登録 → 先頭
+  const fwdName = fwdPick ? fwdPick['乙仲名'] : '';
   // 放射線測定検査 (韓国向けのみ必要)
   const radiation = region === 'KOREA' ? '必要' : '不要';
   // 積込み重量 (韓国向けのみ 23MT以下、それ以外は 25MT以下)
@@ -2428,7 +2516,7 @@ function buildHannyuhyoHtml(pkGrp, packerName) {
   const region = (bkg._region || '').toUpperCase();
   const sig  = staffSig();
   const fwds = S.forwarderList.filter(r => r.POL===pol && r['確認状況']==='✅');
-  const fwd  = fwds[0] || {};
+  const fwd  = pickFwd(fwds) || {};   // v3.4: 選択 → COMPASS 登録 → 先頭
   const fwdName = fwd['乙仲名'] || '';
   const fwdTel  = fwd['TO (メイン)'] || '';
   const shipFull = bkg.cr49f_main_ship_name || '';
@@ -3032,7 +3120,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.3',
+  version: '3.4',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
