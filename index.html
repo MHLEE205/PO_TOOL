@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 /* ══════════════════════════════════════════
    CSS 변수 — 다크 테마 (라이트 전환: [data-theme="light"] 오버라이드만 추가)
@@ -1629,12 +1631,164 @@ body{font-family:'Meiryo','Meiryo UI','MS PGothic',sans-serif;font-size:11.5px;c
 .leenai-doc-footer{margin-top:16px;padding-top:7px;border-top:0.5px solid #bbb;font-size:9px;color:#888;text-align:right;letter-spacing:0.3px;}
 </style>`;
 
+// ══════════════════════════════════════════
+// ── PDF添付 下書き作成 (v3.2) ──
+// 書類ウィンドウの編集後の内容 → PDF → Microsoft Graph で下書き (PDF添付)。送信はしない。
+// 従来の「メール作成 (Outlook)」(mailto) はそのまま残す。
+// ══════════════════════════════════════════
+const PDF_CTX = new WeakMap();                    // 書類ウィンドウ → {to,cc,subject,body,docName,fileName,draftLink}
+const PDF_MAX_BYTES = 3000000;                    // Graph: 3MB 未満は 1 回の POST で添付できる
+const PDF_SCALES = [2, 1.5, 1.2];                 // 画質 (大きすぎる場合は順に下げる)
+const PDF_MARGIN_X = 14, PDF_MARGIN_Y = 12;       // mm — 印刷時の @page と同じ余白
+const PDF_CONTENT_W = 210 - PDF_MARGIN_X * 2;     // 182mm
+const PDF_CONTENT_H = 297 - PDF_MARGIN_Y * 2;     // 273mm
+
+function pdfLibsReady() {
+  return typeof html2canvas === 'function' && !!(window.jspdf && window.jspdf.jsPDF);
+}
+function pdfBytesToB64(bytes) {
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+function tokenHasScope(tok, scope) {
+  try {
+    const p = JSON.parse(atob(String(tok).split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return String(p.scp || '').toLowerCase().split(' ').indexOf(scope.toLowerCase()) >= 0;
+  } catch (e) { return false; }
+}
+// 書類ウィンドウの body を「印刷ページ」単位に分ける (ツールバーと空の区切り div は除く)
+function collectPdfPages(doc) {
+  const pages = [[]];
+  Array.from(doc.body.children).forEach(function (el) {
+    if (el.classList && el.classList.contains('print-toolbar')) return;
+    if (el.hasAttribute && el.hasAttribute('data-pdf-wrap')) return;
+    const st = el.style || {};
+    const brBefore = st.pageBreakBefore === 'always' || st.breakBefore === 'page';
+    const brAfter  = st.pageBreakAfter === 'always' || st.breakAfter === 'page';
+    if (brBefore && pages[pages.length - 1].length) pages.push([]);
+    const isMarker = el.children.length === 0 && !String(el.textContent || '').trim();
+    if (!isMarker) pages[pages.length - 1].push(el);
+    if (brAfter && pages[pages.length - 1].length) pages.push([]);
+  });
+  return pages.filter(function (p) { return p.length > 0; });
+}
+function pdfSliceCanvas(canvas, y, h) {
+  const c = document.createElement('canvas');
+  c.width = canvas.width; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+  return c.toDataURL('image/jpeg', 0.92);
+}
+// 書類ウィンドウの現在の表示 (編集済み) を PDF にする。元の DOM は変更しない (複製を画面外で描画)
+async function renderPdfFromWindow(w, scale) {
+  const doc = w.document;
+  if (doc.activeElement && doc.activeElement.blur) doc.activeElement.blur();
+  const pages = collectPdfPages(doc);
+  if (!pages.length) throw new Error('書類の内容が見つかりません。');
+  const pdf = new window.jspdf.jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+  let pageNo = 0;
+  for (const nodes of pages) {
+    const wrap = doc.createElement('div');
+    wrap.setAttribute('data-pdf-wrap', '1');
+    wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + PDF_CONTENT_W + 'mm;background:#fff;';
+    nodes.forEach(function (n) { wrap.appendChild(n.cloneNode(true)); });
+    doc.body.appendChild(wrap);
+    let canvas;
+    try {
+      canvas = await html2canvas(wrap, { scale: scale, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    } finally {
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    }
+    // 通常は 1 書類 = 1 ページ。収まらない場合のみ A4 の内容高さで分割する
+    const pxPerMm = canvas.width / PDF_CONTENT_W;
+    const sliceMax = Math.floor(PDF_CONTENT_H * pxPerMm);
+    let y = 0;
+    while (y < canvas.height - 6) {
+      const h = Math.min(sliceMax, canvas.height - y);
+      const url = (y === 0 && h === canvas.height) ? canvas.toDataURL('image/jpeg', 0.92) : pdfSliceCanvas(canvas, y, h);
+      if (pageNo > 0) pdf.addPage();
+      pdf.addImage(url, 'JPEG', PDF_MARGIN_X, PDF_MARGIN_Y, PDF_CONTENT_W, h / pxPerMm, undefined, 'FAST');
+      pageNo++; y += h;
+    }
+  }
+  return { bytes: new Uint8Array(pdf.output('arraybuffer')), pages: pageNo };
+}
+// 書類ウィンドウの「📎 PDF添付で下書き作成」ボタンから呼ばれる (window.opener 経由)
+async function createPdfDraftFromWindow(w) {
+  const btn = w.document.getElementById('btn-pdfdraft');
+  const setBtn = function (txt, dis) { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  const say = function (msg) { try { w.alert(msg); } catch (e) { alert(msg); } };
+  const ctx = PDF_CTX.get(w);
+  if (!ctx) { say('メール情報が見つかりません。書類を開き直してください。'); return; }
+  if (ctx.draftLink) { w.open(ctx.draftLink, '_blank', 'noopener'); return; }   // 2 回目のクリック = 作成済みの下書きを開く
+  if (ctx.busy) return;
+  if (!pdfLibsReady()) { say('PDFライブラリの読み込みに失敗しました。ページを再読み込みしてください。'); return; }
+  ctx.busy = true;
+  setBtn('⏳ PDF作成中…', true);
+  try {
+    S.graphToken = await LEENAI.auth.token('graph');
+    if (!S.graphToken) throw new Error('メール認証が必要です。再ログインしてください。');
+    if (!tokenHasScope(S.graphToken, 'Mail.ReadWrite')) {
+      throw new Error('このアカウントには「下書き作成 (Mail.ReadWrite)」の権限がまだ付与されていません。\n管理者の許可後に使えるようになります。\n今回は従来の「📧 メール作成 (Outlook)」をご利用ください。');
+    }
+    let pdf = null;
+    for (const sc of PDF_SCALES) {
+      pdf = await renderPdfFromWindow(w, sc);
+      if (pdf.bytes.length < PDF_MAX_BYTES) break;
+    }
+    if (pdf.bytes.length >= PDF_MAX_BYTES) {
+      throw new Error('PDFが大きすぎます (' + Math.round(pdf.bytes.length / 1024) + ' KB)。従来の「📧 メール作成 (Outlook)」をご利用ください。');
+    }
+    const toList = String(ctx.to || '').split(/[,;]/).map(function (e) { return e.trim(); }).filter(Boolean);
+    const ccBase = String(ctx.cc || '').split(/[,;]/).map(function (e) { return e.trim(); }).filter(Boolean);
+    const ccList = ['rcp@leenearcorp.com'].concat(ccBase).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    const msg = {
+      subject: ctx.subject || '(件名なし)',
+      body: { contentType: 'Text', content: ctx.body || '' },
+      toRecipients: toList.map(function (a) { return { emailAddress: { address: a } }; }),
+      ccRecipients: ccList.map(function (a) { return { emailAddress: { address: a } }; }),
+      attachments: [{
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: (ctx.fileName || ctx.docName || '書類') + '.pdf',
+        contentType: 'application/pdf',
+        contentBytes: pdfBytesToB64(pdf.bytes)
+      }]
+    };
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + S.graphToken, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(msg)
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(function () { return {}; });
+      throw new Error((e && e.error && e.error.message) || ('HTTP ' + res.status));
+    }
+    const draft = await res.json();
+    ctx.draftLink = draft.webLink || '';
+    ctx.busy = false;
+    setBtn(ctx.draftLink ? '✅ 下書き作成済 (クリックで開く)' : '✅ 下書きを作成しました (Outlook の下書きフォルダ)', !ctx.draftLink);
+  } catch (e) {
+    ctx.busy = false;
+    setBtn('📎 PDF添付で下書き作成', false);
+    say('PDF添付の下書きを作成できませんでした。\n' + (e && e.message ? e.message : e));
+  }
+}
+
 function printDoc(html, mailTo='', mailCc='', mailSubject='', mailBody='', docName='書類', fileName='') {
   const w = window.open('', '_blank', 'width=960,height=1100');
   if (!w) { alert('ポップアップがブロックされました。許可してから再試行してください。'); return; }
 
   // ファイル名 (BKG_業者名_書類種別) — ブラウザ印刷時のPDF保存名になる
   const safeFileName = (fileName || docName).replace(/[\/\\?%*:|"<>]/g, '_');
+
+  // PDF添付ボタン用の文脈 (子ウィンドウ → 親の createPdfDraftFromWindow が参照する)
+  if (mailTo) PDF_CTX.set(w, { to: mailTo, cc: mailCc, subject: mailSubject, body: mailBody, docName: docName, fileName: safeFileName });
+  const pdfBtnHtml = mailTo
+    ? `<button id="btn-pdfdraft" class="btn-mail" style="background:#2563eb;" onclick="window.opener&&window.opener.createPdfDraftFromWindow?window.opener.createPdfDraftFromWindow(window):alert('親ウィンドウが閉じられています。')" title="書類をPDF化して添付した下書きを作成 (送信はしません)">📎 PDF添付で下書き作成</button>`
+    : '';
 
   // メールボタン: mailto で デスクトップ Outlook を起動
   const ccFull = ['rcp@leenearcorp.com', ...(mailCc ? [mailCc] : [])].filter((v,i,a)=>a.indexOf(v)===i).join(';');
@@ -1654,6 +1808,7 @@ function printDoc(html, mailTo='', mailCc='', mailSubject='', mailBody='', docNa
     '<style>.btn-mail{background:#059669;color:#fff;}</style></head><body>' +
     '<div class="print-toolbar">' +
       '<button class="btn-print" onclick="window.print()">🖨️ 印刷 / PDF保存</button>' +
+      pdfBtnHtml +
       mailBtnHtml +
       '<button class="btn-close" onclick="window.close()">✕ 閉じる</button>' +
     '</div>' + html + '</body></html>');
@@ -1759,6 +1914,8 @@ function makePoMailBody(grp) {
     sig.name,
     sig.email ? `E-mail: ${sig.email}` : '',
     `Tel. ${sig.tel}  Fax. ${sig.fax}`,
+    '',
+    '✦ Powered by LEENAI Automation System',
   ].filter((l,i,a)=>!(l===''&&a[i-1]==='')).join('\n');
 }
 
@@ -2871,7 +3028,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.1',
+  version: '3.2',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
