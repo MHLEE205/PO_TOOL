@@ -1517,8 +1517,8 @@ function fmtDate(dt) {
   return String(dt).split('T')[0].replace(/-/g,'/');
 }
 function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function showLoading(msg='データ取得中...') { document.getElementById('loadingMsg').textContent=msg; document.getElementById('loadingOverlay').classList.add('show'); }
-function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
+function showLoading(msg) { LEENAI.loading.show(msg||'データ取得中...'); }
+function hideLoading() { LEENAI.loading.hide(); }
 function showSearchAlert(msg, type='err') {
   const el=document.getElementById('searchAlert');
   el.className='status-bar '+type; el.textContent=(type==='err'?'⚠️ ':type==='ok'?'✅ ':'ℹ️ ')+msg;
