@@ -848,7 +848,10 @@ async function searchBkgDV() {
     if (!bkgData.value?.length) { showSearchAlert(`BKG「${bkgNo}」が見つかりません`,'err'); return; }
     S.currentBooking = bkgData.value[0];
     const bkgGuid = S.currentBooking.cr49f_bookingid;
-    S.currentBooking._fwdCompass = await loadBkgFwdCompass(bkgGuid);   // v3.4: COMPASS の Booking に登録された乙仲
+    const fwdC = await loadBkgFwdCompass(bkgGuid);   // v3.4/v3.5: COMPASS の Booking に登録された乙仲
+    S.currentBooking._fwdCompass = fwdC.name;
+    S.currentBooking._fwdCompassCo = fwdC.company;
+    S.currentBooking._fwdCompassErr = fwdC.error;
 
     // 2. マスター並列
     showLoading('船社・港情報取得中...');
@@ -1285,12 +1288,18 @@ function getForwarders(pol, carrier) {
 // ── 乙仲 (P/O・搬入票 タブ) — v3.4 ──
 // 搬入票の「扱い海貨業者名」とブッキング通知メールの「乙仲：」に使う乙仲を決める。
 // 優先順位: ① 画面で選んだ乙仲  ② COMPASS の Booking に登録された乙仲 (M_FORWARDER の名前と一致するもの)  ③ 先頭の候補 (従来の動作)
+// 法人格 (株式会社 / (株) / ㈱ / 有限会社) と空白・記号 (. - ・ ( ) 全角括弧) を除き、小文字にして比較する
 function normFwdName(s) {
-  return String(s || '').replace(/株式会社|\(株\)|（株）|㈱|\s|\u3000/g, '').toLowerCase();
+  return String(s || '').replace(/\u682a\u5f0f\u4f1a\u793e|\(\u682a\)|\uff08\u682a\uff09|\u3231|\u6709\u9650\u4f1a\u793e|[\s\u3000.\-\u30fb()\uff08\uff09]/g, '').toLowerCase();
 }
 function fwdNameMatch(a, b) {
   const x = normFwdName(a), y = normFwdName(b);
   return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+}
+// COMPASS の Booking に登録された乙仲 (crcf9_forwarder = 名前 / crcf9_forwarder_company = 会社名) と M_FORWARDER の行名が一致するか
+function fwdMatchCompass(rowName) {
+  const b = S.currentBooking || {};
+  return fwdNameMatch(rowName, b._fwdCompass) || fwdNameMatch(rowName, b._fwdCompassCo);
 }
 function pickFwd(cands) {
   if (!cands || !cands.length) return null;
@@ -1298,19 +1307,25 @@ function pickFwd(cands) {
     const m = cands.find(r => r['乙仲名'] === S.fwdChoiceA);
     if (m) return m;
   }
-  const compass = S.currentBooking && S.currentBooking._fwdCompass;
-  if (compass) {
-    const m = cands.find(r => fwdNameMatch(r['乙仲名'], compass));
+  const b = S.currentBooking || {};
+  if (b._fwdCompass || b._fwdCompassCo) {
+    const m = cands.find(r => fwdMatchCompass(r['乙仲名']));
     if (m) return m;
   }
   return cands[0];
 }
-// COMPASS の Booking に登録された乙仲 (フィールド名 cr49f_fowarder_id の綴りは COMPASS のまま)。失敗しても BKG 検索は止めない
+// COMPASS の Booking に登録された乙仲 (ナビゲーション プロパティ cr49f_fowarder_id — 綴りは COMPASS のまま。E-05 と同じ $expand)。
+// ※ ルックアップの表示値 (FormattedValue) は乙仲マスターの crcf9_id (番号) なので使わない。名前は crcf9_forwarder / 会社名は crcf9_forwarder_company。
+// 失敗しても BKG 検索は止めない (error に理由を入れて返す)
 async function loadBkgFwdCompass(bkgGuid) {
   try {
-    const d = await dvGet(`cr49f_bookings(${bkgGuid})?$select=_cr49f_fowarder_id_value`);
-    return d['_cr49f_fowarder_id_value@OData.Community.Display.V1.FormattedValue'] || '';
-  } catch (e) { console.warn('乙仲(COMPASS) 取得失敗:', e.message); return ''; }
+    const d = await dvGet(`cr49f_bookings(${bkgGuid})?$select=cr49f_bookingid&$expand=cr49f_fowarder_id($select=crcf9_forwarder,crcf9_forwarder_company)`);
+    const f = d.cr49f_fowarder_id || {};
+    return { name: f.crcf9_forwarder || '', company: f.crcf9_forwarder_company || '', error: '' };
+  } catch (e) {
+    console.warn('乙仲(COMPASS) 取得失敗:', e.message);
+    return { name: '', company: '', error: e.message || 'error' };
+  }
 }
 function getFwdCandidatesA() {
   const bkg = S.currentBooking;
@@ -1328,8 +1343,8 @@ function renderFwdSelectorA() {
   if (!sec) return;
   S.fwdChoiceA = '';                       // BKG を検索し直すたびに自動選択へ戻す
   S.fwdCandsA = getFwdCandidatesA();
-  const compass = (S.currentBooking && S.currentBooking._fwdCompass) || '';
-  if (!S.fwdCandsA.length && !compass) { sec.classList.add('hidden'); return; }
+  const b = S.currentBooking || {};
+  if (!S.fwdCandsA.length && !b._fwdCompass && !b._fwdCompassCo && !b._fwdCompassErr) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
   paintFwdSelectorA();
 }
@@ -1338,15 +1353,18 @@ function paintFwdSelectorA() {
   const note = document.getElementById('fwdNoteA');
   if (!sel || !note) return;
   const cands = S.fwdCandsA || [];
-  const compass = (S.currentBooking && S.currentBooking._fwdCompass) || '';
+  const bk = S.currentBooking || {};
+  const compass = bk._fwdCompass || bk._fwdCompassCo || '';
   const cur = pickFwd(cands);
   sel.innerHTML = cands.length
     ? cands.map((r, i) => `<button class="fwd-btn ${cur && r['乙仲名'] === cur['乙仲名'] ? 'active' : ''}" onclick="selectFwdA(${i})">${escH(r['乙仲名'])}</button>`).join('')
     : '<span style="color:var(--warn);">乙仲マスター未登録 (M_FORWARDER)</span>';
   const manual = S.fwdChoiceA ? ' / 手動選択中' : '';
-  if (!compass) {
+  if (bk._fwdCompassErr) {
+    note.innerHTML = '⚠️ COMPASS の乙仲を取得できませんでした (' + escH(bk._fwdCompassErr) + ') — 先頭の候補を使用しています。違う場合は上のボタンで選択してください。' + manual;
+  } else if (!compass) {
     note.innerHTML = 'COMPASS の Booking に乙仲の登録なし — 先頭の候補を使用しています。違う場合は上のボタンで選択してください。' + manual;
-  } else if (cands.some(r => fwdNameMatch(r['乙仲名'], compass))) {
+  } else if (cands.some(r => fwdMatchCompass(r['乙仲名']))) {
     note.innerHTML = 'COMPASS 登録: ' + escH(compass) + (S.fwdChoiceA ? manual : ' (自動選択)');
   } else {
     note.innerHTML = '⚠️ COMPASS 登録「' + escH(compass) + '」は M_FORWARDER に見つかりません。上のボタンで選択してください (現在は先頭の候補)。' + manual;
@@ -3120,7 +3138,7 @@ async function startTool() {
 LEENAI.init({
   sys: 'B-03',
   name: 'P/O 発注ツール',
-  version: '3.4',
+  version: '3.5',
   date: '2026-10-08',
   desc: 'P/O 発注・搬入票・通関依頼・スケジュール統合ツール',
   onReady: startTool,
